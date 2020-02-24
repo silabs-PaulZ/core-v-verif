@@ -31,7 +31,8 @@
 package uvme_cv32_pkg;
    
    import uvm_pkg       ::*;
-   import uvmt_cv32_pkg ::*;
+   //import uvmt_cv32_pkg ::*;  // See https://github.com/openhwgroup/core-v-verif/issues/64
+
    //import uvml_hrtbt_pkg::*;
    //import uvml_sb_pkg   ::*;
    //import uvma_debug_pkg::*;
