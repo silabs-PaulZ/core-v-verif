@@ -154,8 +154,8 @@ dsim-comp: mk_results $(CV32E40P_PKG)
 		$(DSIM_UVM_ARGS) \
 		+incdir+$(DV_UVMT_CV32_PATH) \
 		+incdir+$(DV_UVME_CV32_PATH) \
-		-f $(DV_UVMT_CV32_PATH)/uvmt_cv32.flist \
 		-f $(DV_UVME_CV32_PATH)/uvme_cv32_pkg.flist \
+		-f $(DV_UVMT_CV32_PATH)/uvmt_cv32.flist \
 		$(RTLSRC_PKG) $(RTLSRC) $(TBSRC_PKG) $(TBSRC) \
 		+incdir+$(RTLSRC_INCDIR) \
 		-sv_lib $(UVM_HOME)/src/dpi/libuvm_dpi.so \
