@@ -26,7 +26,7 @@ COREV_PROJ    = cv32
 PROJ_ROOT_DIR = $(PWD)/../../..
 
 # Compile compile flags for all simulators
-SV_CMP_FLAGS = +define+__USE_COREV_SIMULATION_MODELS__ # workaround for https://github.com/openhwgroup/cv32e40p/issues/208
+SV_CMP_FLAGS = 
 UVM_PLUSARGS =
 
 # dsim is the Metrics Technologies SystemVerilog simulator  (https://metrics.ca/)
@@ -64,7 +64,7 @@ RTLSRC_HOME   := $(CV32E40P_PKG)/rtl
 FPNEW_PKG     := $(RTLSRC_HOME)/fpnew
 RTLSRC_INCDIR := $(RTLSRC_HOME)/include
 RTLSRC_PKG    := $(FPNEW_PKG)/src/fpnew_pkg.sv \
-                 $(SIM_LIBS)/cluster_clock_gating.sv \
+                 $(RTLSRC_HOME)/cv32e40p_sim_clock_gating.sv \
                  $(addprefix $(RTLSRC_HOME)/include/,\
                    apu_core_package.sv \
                    riscv_defines.sv \
@@ -72,22 +72,36 @@ RTLSRC_PKG    := $(FPNEW_PKG)/src/fpnew_pkg.sv \
 RTLSRC        := $(filter-out $(RTLSRC_HOME)/riscv_register_file_latch.sv,\
                    $(wildcard $(RTLSRC_HOME)/*.sv))
 
+
+###############################################################################
+# Common Makefile:
+#    - Core Firmware and the RISCV GCC Toolchain (SDK)
+#    - Variables for RTL dependencies
+include ../Common.mk
+
+
 ###############################################################################
 # CV32E40P RTL dependencies
 # The variables RTLSRC_PKG and RTLSRC need to be re-evaluated since
 # CV32E40P_PKG was null the first time.
 # TODO: cmd to eval RTLSRC needs to be replaced with a manifest (flist)
+clone_cv32e40p_rtl:
+	$(CLONE_CV32E40P_CMD)
+
+clone_fpnew_rtl: clone_cv32e40p_rtl
+	$(CLONE_FPNEW_CMD)
+
 $(CV32E40P_PKG):
-	git clone https://github.com/openhwgroup/cv32e40p --recurse $(CV32E40P_PKG)
-	git clone https://github.com/pulp-platform/fpnew --recurse $(FPNEW_PKG)
+	$(CLONE_CV32E40P_CMD)
+	$(CLONE_FPNEW_CMD)
 	$(eval RTLSRC_HOME   = $(CV32E40P_PKG)/rtl)
 	$(eval RTLSRC_PKG = $(FPNEW_PKG)/src/fpnew_pkg.sv \
-	                    $(SIM_LIBS)/cluster_clock_gating.sv \
 	                    $(addprefix $(RTLSRC_HOME)/include/,\
 	                      apu_core_package.sv \
 	                      riscv_defines.sv \
 	                      riscv_tracer_defines.sv))
 	$(eval RTLSRC = $(RTLSRC_HOME)/riscv_alu_div.sv \
+                  $(RTLSRC_HOME)/cv32e40p_sim_clock_gating.sv \
                   $(RTLSRC_HOME)/riscv_controller.sv \
                   $(RTLSRC_HOME)/riscv_ex_stage.sv \
                   $(RTLSRC_HOME)/riscv_id_stage.sv \
@@ -112,11 +126,6 @@ $(CV32E40P_PKG):
                   $(RTLSRC_HOME)/riscv_L0_buffer.sv \
                   $(RTLSRC_HOME)/riscv_prefetch_buffer.sv \
                   $(RTLSRC_HOME)/riscv_tracer.sv)
-
-
-###############################################################################
-# Core Firmware and the RISCV GCC Toolchain (SDK)
-include ../Firmware.mk
 
 
 ###############################################################################
