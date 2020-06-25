@@ -48,12 +48,11 @@ no_rule:
 help:
 	xrun -help
 
-.PHONY: comp hello_world hello-world
+.PHONY: comp
 
 mk_xrun_dir: 
 	$(MKDIR_P) $(XRUN_DIR)
 
-hello_world: hello-world
 
 cv32_riscv_tests: cv32-riscv-tests 
 
@@ -68,63 +67,14 @@ comp: mk_xrun_dir $(CV32E40P_PKG) $(OVP_MODEL_DPI)
 		-f $(CV32E40P_MANIFEST) \
                 $(XRUN_FILE_LIST) \
 		$(UVM_PLUSARGS) \
-		-elaborate
+		-elaborate \
+		+define+DEBUGGER_SUPPORT
 #		$(XRUN_VELABCOVERAGE)
-
-################################################################################
-# Custom test-programs.  See comment in dsim.mk for more info
-custom: comp $(CUSTOM_DIR)/$(CUSTOM_PROG).hex
-	$(XRUN) -l xrun-$(CUSTOM_PROG).log $(XRUN_RUN_FLAGS) \
-		+elf_file=$(CUSTOM_DIR)/$(CUSTOM_PROG).elf \
-		+nm_file=$(CUSTOM_DIR)/$(CUSTOM_PROG).nm \
-		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-		+firmware=$(CUSTOM_DIR)/$(CUSTOM_PROG).hex
 
 
 ################################################################################
 # Explicit target tests
-hello-world: comp $(CUSTOM)/hello_world.hex
-	$(XRUN) -l xrun-hello-world.log $(XRUN_RUN_FLAGS) \
-		+elf_file=$(CUSTOM)/hello_world.elf \
-		+nm_file=$(CUSTOM)/hello_world.nm \
-		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-		+firmware=$(CUSTOM)/hello_world.hex
-#		$(XRUN_VRUNCOVERAGE)
 
-misalign: comp $(CUSTOM)/misalign.hex
-	$(XRUN) -l xrun-misalign.log $(XRUN_RUN_FLAGS) \
-		+elf_file=$(CUSTOM)/misalign.elf \
-		+nm_file=$(CUSTOM)/misalign.nm \
-		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-		+firmware=$(CUSTOM)/misalign.hex
-
-illegal: comp $(CUSTOM)/illegal.hex
-	$(XRUN) -l xrun-illegal.log $(XRUN_RUN_FLAGS) \
-		+elf_file=$(CUSTOM)/illegal.elf \
-		+nm_file=$(CUSTOM)/illegal.nm \
-		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-		+firmware=$(CUSTOM)/illegal.hex
-
-fibonacci: comp $(CUSTOM)/fibonacci.hex
-	$(XRUN) -l xrun-fibonacci.log $(XRUN_RUN_FLAGS) \
-		+elf_file=$(CUSTOM)/fibonacci.elf \
-		+nm_file=$(CUSTOM)/fibonacci.nm \
-		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-		+firmware=$(CUSTOM)/fibonacci.hex
-
-dhrystone: comp $(CUSTOM)/dhrystone.hex
-	$(XRUN) -l xrun-dhrystone.log $(XRUN_RUN_FLAGS) \
-		+elf_file=$(CUSTOM)/dhrystone.elf \
-		+nm_file=$(CUSTOM)/dhrystone.nm \
-		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-		+firmware=$(CUSTOM)/dhrystone.hex
-
-riscv_ebreak_test_0: comp $(CUSTOM)/riscv_ebreak_test_0.hex
-	$(XRUN) -l xrun-riscv_ebreak_test_0.log $(XRUN_RUN_FLAGS) \
-                +elf_file=$(CUSTOM)/riscv_ebreak_test_0.elf \
-                +nm_file=$(CUSTOM)/riscv_ebreak_test_0.nm \
-                +UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-                +firmware=$(CUSTOM)/riscv_ebreak_test_0.hex
 
 # Runs tests in cv32_riscv_tests/ only
 cv32-riscv-tests: comp $(CV32_RISCV_TESTS_FIRMWARE)/cv32_riscv_tests_firmware.hex
@@ -154,13 +104,31 @@ cv32-firmware: comp $(FIRMWARE)/firmware.hex
 		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
 		+firmware=$(FIRMWARE)/firmware.hex
 
-# XRUN UNIT TESTS: run each test individually. See comment header for dsim-unit-test for more info.
-# TODO: update ../Common.mk to create "xrun-firmware-unit-test" target.
-# Example: to run the ADDI test `make xrun-unit-test addi`
-#xrun-unit-test: comp
-#	$(XRUN) -R -l xrun-$(UNIT_TEST).log \
-#		+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
-#		+firmware=$(FIRMWARE)/firmware_unit_test.hex
+
+###############################################################################
+# Entry point for test name
+#  If test directory exists, recall make using the sim_<test_name>
+%:
+	if [ -d $(CORE_TEST_DIR)/$* ]; then \
+		echo "RUNNING: test $(CORE_TEST_DIR)/$*"; \
+		echo ""; \
+		make sim_$* TEST_NAME=$* ;\
+	else \
+		echo "ERROR: Cannot find test $*"; \
+		echo ""; \
+		exit 1;  \
+	fi
+
+# Note: the % can only be used once, hence passing from previous call into TEST_NAME variable
+sim_%:  comp $(CORE_TEST_DIR)/%/$(TEST_NAME).hex
+	$(XRUN) -l xrun-$*.log $(XRUN_RUN_FLAGS) \
+	+UVM_TESTNAME=uvmt_cv32_firmware_test_c \
+	+elf_file=$(CORE_TEST_DIR)/$*/$*.elf \
+	+nm_file=$(CORE_TEST_DIR)/$*/$*.nm \
+	+firmware=$(CORE_TEST_DIR)/$*/$*.hex \
+	+debugger=$(CORE_TEST_DIR)/$*/$*_debugger.hex \
+	+define+DEBUGGER_SUPPORT
+
 
 ###############################################################################
 # Clean up your mess!

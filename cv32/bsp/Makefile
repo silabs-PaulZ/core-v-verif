@@ -2,7 +2,7 @@ RISCV            ?= /opt/riscv
 RISCV_EXE_PREFIX  = $(RISCV)/bin/riscv32-unknown-elf-
 RISCV_GCC = $(RISCV_EXE_PREFIX)gcc
 RISCV_AR = $(RISCV_EXE_PREFIX)ar
-SRC = crt0.S handlers.S syscalls.c vectors.S
+SRC = crt0.S handlers.S syscalls.c vectors.S debugger.S
 OBJ = libcv-verif.a crt0.o handlers.o syscalls.o vectors.o
 
 all:
