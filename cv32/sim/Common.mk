@@ -58,10 +58,7 @@ CV32E40P_HASH   ?= 8e22c994198ad08f4cacf239d56d98e1cc25627b
 
 FPNEW_REPO      ?= https://github.com/pulp-platform/fpnew
 FPNEW_BRANCH    ?= master
-#Note: this is one merge behind the head (as of 2020-06-11)
 FPNEW_HASH      ?= f108dfdd84f7c24dcdefb35790fafb3905bce552
-#Note: this is head (as of 2020-06-11).  Can't use it because of the worm
-#FPNEW_HASH      ?= babffe88fcf6d2931a7afa8d121b6a6ba4f532f7
 
 RISCVDV_REPO    ?= https://github.com/google/riscv-dv
 RISCVDV_BRANCH  ?= master
@@ -125,8 +122,6 @@ OVP_CTRL_FILE   = $(DV_OVPM_DESIGN)/riscv_CV32E40P.ic
 # riscv toolchain install path
 RISCV            ?= /opt/riscv
 RISCV_EXE_PREFIX ?= $(RISCV)/bin/riscv32-unknown-elf-
-
-CFLAGS ?= -Os -g -static -mabi=ilp32 -march=rv32imc -Wall -pedantic
 
 # CORE FIRMWARE vars. All of the C and assembler programs under CORE_TEST_DIR
 # are collectively known as "Core Firmware".  Yes, this is confusing because
@@ -201,167 +196,81 @@ FIRMWARE_UNIT_TEST_OBJS   =  	$(addsuffix .o, \
 # must be able to run (and pass!) prior to generating a pull-request.
 sanity: hello-world
 
+###############################################################################
 # rules to generate hex (loadable by simulators) from elf
+.PRECIOUS : %.elf %.hex
 %.hex: %.elf
-	$(RISCV_EXE_PREFIX)objcopy -O verilog $< $@
+	test -s $(dir $*) ||  echo ""; echo "ERROR: Test does not exist: $(dir $*)"; echo ""; exit 1;
+	$(RISCV_EXE_PREFIX)objcopy -O verilog $<  $@ --remove-section=.debugger
+	$(RISCV_EXE_PREFIX)objcopy -O verilog $<  $*_debugger.hex \
+		--only-section=.debugger           --change-section-address  .debugger=0xFFE000          \
+		--only-section=.debugger_exception --change-section-address .debugger_exception=0xFFF000
 	$(RISCV_EXE_PREFIX)readelf -a $< > $*.readelf
 	$(RISCV_EXE_PREFIX)objdump -D $*.elf > $*.objdump
 
-bsp:
-	make -C $(BSP)
+###############################################################################
+# Prepare file list for .elf
+# Get the source file names from the BSP directory
+PREREQ_BSP_FILES  = $(filter %.c %.S %.ld,$(wildcard $(BSP)/*))
+BSP_SOURCE_FILES  = $(notdir $(filter %.c %.S ,$(PREREQ_BSP_FILES)))
 
-clean-bsp:
-	make clean -C $(BSP)
+# Let the user override BSP files
+# The following will build a list of BSP files that are not in test directory
+BSP_FILES = $(foreach BSP_FILE, $(BSP_SOURCE_FILES), \
+	       $(if $(wildcard  $(addprefix $(dir $*), $(BSP_FILE))),,\
+	          $(wildcard $(addprefix $(BSP)/, $(BSP_FILE))) ) \
+	     )
 
-# Running custom programs:
-# We link with our custom crt0.s and syscalls.c against newlib so that we can
-# use the c standard library
-#$(CUSTOM_DIR)/$(CUSTOM_PROG).elf: $(CUSTOM_DIR)/$(CUSTOM_PROG).c
-#	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ -w -Os -g -nostdlib \
-#		-T $(CUSTOM_DIR)/link.ld  \
-#		-static \
-#		$(CUSTOM_DIR)/crt0.S \
-#		$^ $(CUSTOM_DIR)/syscalls.c $(CUSTOM_DIR)/vectors.S \
-#		-I $(RISCV)/riscv32-unknown-elf/include \
-#		-L $(RISCV)/riscv32-unknown-elf/lib \
-#		-lc -lm -lgcc
+# Get Test Files
+#  Note, the prerequisite uses '%', while the recipe uses '$*'
+PREREQ_TEST_FILES = $(filter %.c %.S,$(wildcard $(dir %)*))
+TEST_FILES        = $(filter %.c %.S,$(wildcard $(dir $*)*))
 
-# Similaro to CUSTOM (above), this time with ASM directory
-#$(ASM)/$(ASM_PROG).elf: $(ASM)/$(ASM_PROG).S
-#		@   echo "Compiling $(ASM_PROG).S"
-#		$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -c -o $(ASM)/$(ASM_PROG).o \
-#		$(ASM)/$(ASM_PROG).S -DRISCV32GC -O0 -nostdlib -nostartfiles \
-#		-I $(ASM)
-#		@   echo "Linking $(ASM_PROG).o"
-#		$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc \
-#		-o $(ASM)/$(ASM_PROG).elf \
-#		$(ASM)/$(ASM_PROG).o -nostdlib -nostartfiles \
-#		-T $(ASM)/link.ld
-
-# HELLO WORLD: custom/hello_world.elf: ../../tests/core/custom/hello_world.c
-
-#$(CUSTOM)/hello_world.elf: $(CUSTOM)/hello_world.c
-#	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ -w -Os -g -nostdlib \
-#		-T $(CUSTOM)/link.ld  \
-#		-static \
-#		$(CUSTOM)/crt0.S \
-#		$^ $(CUSTOM)/syscalls.c $(CUSTOM)/vectors.S \
-#		-I $(RISCV)/riscv32-unknown-elf/include \
-#		-L $(RISCV)/riscv32-unknown-elf/lib \
-#		-lc -lm -lgcc
-
-#$(CUSTOM)/misalign.elf: $(CUSTOM)/misalign.c
-#	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ -w -Os -g -nostdlib \
-#		-T $(CUSTOM)/link.ld  \
-#		-static \
-#		$(CUSTOM)/crt0.S \
-#		$^ $(CUSTOM)/syscalls.c $(CUSTOM)/vectors.S \
-#		-I $(RISCV)/riscv32-unknown-elf/include \
-#		-L $(RISCV)/riscv32-unknown-elf/lib \
-#		-lc -lm -lgcc
-
-#$(CUSTOM)/illegal.elf: $(CUSTOM)/illegal.c
-#	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ -w -Os -g -nostdlib \
-#		-T $(CUSTOM)/link.ld  \
-#		-static \
-#		$(CUSTOM)/crt0.S \
-#		$^ $(CUSTOM)/syscalls.c $(CUSTOM)/vectors.S \
-#		-I $(RISCV)/riscv32-unknown-elf/include \
-#		-L $(RISCV)/riscv32-unknown-elf/lib \
-#		-lc -lm -lgcc
-
-#$(CUSTOM)/fibonacci.elf: $(CUSTOM)/fibonacci.c
-#	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ -w -Os -g -nostdlib \
-#		-T $(CUSTOM)/link.ld  \
-#		-static \
-#		$(CUSTOM)/crt0.S \
-#		$^ $(CUSTOM)/syscalls.c $(CUSTOM)/vectors.S \
-#		-I $(RISCV)/riscv32-unknown-elf/include \
-#		-L $(RISCV)/riscv32-unknown-elf/lib \
-#		-lc -lm -lgcc
-
-#$(CUSTOM)/dhrystone.elf: $(CUSTOM)/dhrystone.c
-#	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ -w -Os -g -nostdlib \
-#		-T $(CUSTOM)/link.ld  \
-#		-static \
-#		$(CUSTOM)/crt0.S \
-#		$^ $(CUSTOM)/syscalls.c $(CUSTOM)/vectors.S \
-#		-I $(RISCV)/riscv32-unknown-elf/include \
-#		-L $(RISCV)/riscv32-unknown-elf/lib \
-#		-lc -lm -lgcc
-
-#$(CUSTOM)/riscv_ebreak_test_0.elf: $(CUSTOM)/riscv_ebreak_test_0.S
-#		@   echo "Compiling riscv_ebreak_test_0.S"
-#		$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -c -o $(CUSTOM)/riscv_ebreak_test_0.o \
-#		$(CUSTOM)/riscv_ebreak_test_0.S -DRISCV32GC -O0 -nostdlib -nostartfiles \
-#		-I $(CUSTOM)
-#		@   echo "Linking riscv_ebreak_test_0.o"
-#		$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc \
-#		-o $(CUSTOM)/riscv_ebreak_test_0.elf \
-#		$(CUSTOM)/riscv_ebreak_test_0.o -nostdlib -nostartfiles \
-#		-T $(CUSTOM)/link.ld
-
-# Patterned targets to generate ELF.  Used only if explicit targets do not match.
-# $@ is the file being generated.
-# $< is first prerequiste.
-# $^ is all prerequistes.
-#
-# This target selected if both %.c and %.S exist
-%.elf: %.c
-	make clean-bsp
-	make bsp
-	$(RISCV_EXE_PREFIX)gcc $(CFLAGS) -o $@ \
-		-nostartfiles \
-		$^ -T $(BSP)/link.ld -L $(BSP) -lcv-verif
-
-# This target selected if only %.S exists
-%.elf: %.S
-	make clean-bsp
-	make bsp
-	$(RISCV_EXE_PREFIX)gcc $(CFLAGS) -o $@ \
-		-nostartfiles \
-		-I $(ASM) \
-		$^ -T $(BSP)/link.ld -L $(BSP) -lcv-verif
+# Build image using TEST_FILES + BSP_FILES
+#$(PREREQ_TEST_FILES) $(PREREQ_BSP_FILES)
+%.elf: 
+	test -s $(dir $*) ||  echo ""; echo "ERROR: Test does not exist: $(dir $*)"; echo ""; exit 1;
+	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ \
+		-Wall -pedantic -Os -g -nostartfiles -static \
+		$(TEST_FILES) \
+		$(BSP_FILES) \
+		-T $(BSP)/link.ld
 
 
-# compile and dump RISCV_TESTS only
-#$(CV32_RISCV_TESTS_FIRMWARE)/cv32_riscv_tests_firmware.elf: $(CV32_RISCV_TESTS_FIRMWARE_OBJS) $(RISCV_TESTS_OBJS) \
-#							$(CV32_RISCV_TESTS_FIRMWARE)/link.ld
-#	$(RISCV_EXE_PREFIX)gcc -g -Os -mabi=ilp32 -march=rv32imc -ffreestanding -nostdlib -o $@ \
-#		$(RISCV_TEST_INCLUDES) \
-#		-Wl,-Bstatic,-T,$(CV32_RISCV_TESTS_FIRMWARE)/link.ld,-Map,$(CV32_RISCV_TESTS_FIRMWARE)/cv32_riscv_tests_firmware.map,--strip-debug \
-#		$(CV32_RISCV_TESTS_FIRMWARE_OBJS) $(RISCV_TESTS_OBJS) -lgcc
 
-#$(CV32_RISCV_TESTS_FIRMWARE)/cv32_riscv_tests_firmware.elf: $(CV32_RISCV_TESTS_FIRMWARE_OBJS) $(RISCV_TESTS_OBJS) \
-#							$(CV32_RISCV_TESTS_FIRMWARE)/link.ld
+
+
+###############################################################################
+# compile and dump RISCV_TESTS only -FIXME
+
 ../../tests/core/cv32_riscv_tests_firmware/cv32_riscv_tests_firmware.elf: $(CV32_RISCV_TESTS_FIRMWARE_OBJS) $(RISCV_TESTS_OBJS)
-	$(RISCV_EXE_PREFIX)gcc $(CFLAGS) -ffreestanding -nostdlib -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -g -Os -mabi=ilp32 -march=rv32imc -ffreestanding -nostdlib -o $@ \
 		$(RISCV_TEST_INCLUDES) \
 		-Wl,-Bstatic,-T,$(CV32_RISCV_TESTS_FIRMWARE)/link.ld,-Map,$(CV32_RISCV_TESTS_FIRMWARE)/cv32_riscv_tests_firmware.map,--strip-debug \
 		$(CV32_RISCV_TESTS_FIRMWARE_OBJS) $(RISCV_TESTS_OBJS) -lgcc
 
 $(CV32_RISCV_TESTS_FIRMWARE)/start.o: $(CV32_RISCV_TESTS_FIRMWARE)/start.S
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -o $@ $<
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -o $@ $<
 
 $(CV32_RISCV_TESTS_FIRMWARE)/%.o: $(CV32_RISCV_TESTS_FIRMWARE)/%.c
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) --std=c99 -Wall \
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -Os --std=c99 -Wall \
 		$(RISCV_TEST_INCLUDES) \
 		-ffreestanding -nostdlib -o $@ $<
 
 # compile and dump RISCV_COMPLIANCE_TESTS only
 $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/cv32_riscv_compliance_tests_firmware.elf: $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE_OBJS) $(COMPLIANCE_TEST_OBJS) \
 							$(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/link.ld
-	$(RISCV_EXE_PREFIX)gcc $(CFLAGS) -ffreestanding -nostdlib -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -g -Os -mabi=ilp32 -march=rv32imc -ffreestanding -nostdlib -o $@ \
 		-D RUN_COMPLIANCE \
 		$(RISCV_TEST_INCLUDES) \
 		-Wl,-Bstatic,-T,$(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/link.ld,-Map,$(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/cv32_riscv_compliance_tests_firmware.map,--strip-debug \
 		$(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE_OBJS) $(COMPLIANCE_TEST_OBJS) -lgcc
 
 $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/start.o: $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/start.S
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -D RUN_COMPLIANCE -o $@ $<
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -D RUN_COMPLIANCE -g -o $@ $<
 
 $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/%.o: $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/%.c
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) --std=c99 -Wall \
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -Os --std=c99 -Wall \
 		$(RISCV_TEST_INCLUDES) \
 		-ffreestanding -nostdlib -o $@ $<
 
@@ -369,7 +278,7 @@ $(CV32_RISCV_COMPLIANCE_TESTS_FIRMWARE)/%.o: $(CV32_RISCV_COMPLIANCE_TESTS_FIRMW
 
 # Thales start
 $(FIRMWARE)/firmware_unit_test.elf: $(FIRMWARE_OBJS) $(FIRMWARE_UNIT_TEST_OBJS) $(FIRMWARE)/link.ld
-	$(RISCV_EXE_PREFIX)gcc $(CFLAGS) -ffreestanding -nostdlib -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -g -Os -march=rv32imc -ffreestanding -nostdlib -o $@ \
 		$(RISCV_TEST_INCLUDES) \
 		-D RUN_COMPLIANCE \
 		-Wl,-Bstatic,-T,$(FIRMWARE)/link.ld,-Map,$(FIRMWARE)/firmware.map,--strip-debug \
@@ -377,7 +286,7 @@ $(FIRMWARE)/firmware_unit_test.elf: $(FIRMWARE_OBJS) $(FIRMWARE_UNIT_TEST_OBJS) 
 # Thales end
 
 $(FIRMWARE)/firmware.elf: $(FIRMWARE_OBJS) $(FIRMWARE_TEST_OBJS) $(COMPLIANCE_TEST_OBJS) $(FIRMWARE)/link.ld
-	$(RISCV_EXE_PREFIX)gcc $(CFLAGS) -ffreestanding -nostdlib -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -g -Os -march=rv32imc -ffreestanding -nostdlib -o $@ \
 		$(RISCV_TEST_INCLUDES) \
 		-D RUN_COMPLIANCE \
 		-Wl,-Bstatic,-T,$(FIRMWARE)/link.ld,-Map,$(FIRMWARE)/firmware.map,--strip-debug \
@@ -392,21 +301,21 @@ ifeq ($(UNIT_TEST_CMD),1)
 ifeq ($(FIRMWARE_UNIT_TEST_OBJS),)
 $(error no existing unit test in argument )
 else
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -D RUN_COMPLIANCE  -DUNIT_TEST_CMD=$(UNIT_TEST_CMD) -DUNIT_TEST=$(UNIT_TEST) -DUNIT_TEST_RET=$(UNIT_TEST)_ret -o $@ $<
+	$(RISCV_EXE_PREFIX)gcc -c -march=rv32imc -g -D RUN_COMPLIANCE  -DUNIT_TEST_CMD=$(UNIT_TEST_CMD) -DUNIT_TEST=$(UNIT_TEST) -DUNIT_TEST_RET=$(UNIT_TEST)_ret -o $@ $<
 endif
 else
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -D RUN_COMPLIANCE  -DUNIT_TEST_CMD=$(UNIT_TEST_CMD) -o $@ $<
+	$(RISCV_EXE_PREFIX)gcc -c -march=rv32imc -g -D RUN_COMPLIANCE  -DUNIT_TEST_CMD=$(UNIT_TEST_CMD) -o $@ $<
 endif
 # Thales end
 
 $(FIRMWARE)/%.o: $(FIRMWARE)/%.c
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) --std=c99 \
+	$(RISCV_EXE_PREFIX)gcc -c -march=rv32ic -g -Os --std=c99 -Wall \
 		$(RISCV_TEST_INCLUDES) \
 		-ffreestanding -nostdlib -o $@ $<
 
 $(RISCV_TESTS)/rv32ui/%.o: $(RISCV_TESTS)/rv32ui/%.S $(RISCV_TESTS)/riscv_test.h \
 			$(RISCV_TESTS)/macros/scalar/test_macros.h
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -o $@ \
 		$(RISCV_TEST_INCLUDES) \
 		-DTEST_FUNC_NAME=$(notdir $(basename $<)) \
 		-DTEST_FUNC_TXT='"$(notdir $(basename $<))"' \
@@ -414,7 +323,7 @@ $(RISCV_TESTS)/rv32ui/%.o: $(RISCV_TESTS)/rv32ui/%.S $(RISCV_TESTS)/riscv_test.h
 
 $(RISCV_TESTS)/rv32um/%.o: $(RISCV_TESTS)/rv32um/%.S $(RISCV_TESTS)/riscv_test.h \
 			$(RISCV_TESTS)/macros/scalar/test_macros.h
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -o $@ \
 		$(RISCV_TEST_INCLUDES) \
 		-DTEST_FUNC_NAME=$(notdir $(basename $<)) \
 		-DTEST_FUNC_TXT='"$(notdir $(basename $<))"' \
@@ -422,7 +331,7 @@ $(RISCV_TESTS)/rv32um/%.o: $(RISCV_TESTS)/rv32um/%.S $(RISCV_TESTS)/riscv_test.h
 
 $(RISCV_TESTS)/rv32uc/%.o: $(RISCV_TESTS)/rv32uc/%.S $(RISCV_TESTS)/riscv_test.h \
 			$(RISCV_TESTS)/macros/scalar/test_macros.h
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -o $@ \
 		$(RISCV_TEST_INCLUDES) \
 		-DTEST_FUNC_NAME=$(notdir $(basename $<)) \
 		-DTEST_FUNC_TXT='"$(notdir $(basename $<))"' \
@@ -432,7 +341,7 @@ $(RISCV_TESTS)/rv32uc/%.o: $(RISCV_TESTS)/rv32uc/%.S $(RISCV_TESTS)/riscv_test.h
 $(RISCV_COMPLIANCE_TESTS)/%.o: $(RISCV_COMPLIANCE_TESTS)/%.S $(RISCV_COMPLIANCE_TESTS)/riscv_test.h \
 			$(RISCV_COMPLIANCE_TESTS)/test_macros.h $(RISCV_COMPLIANCE_TESTS)/compliance_io.h \
 			$(RISCV_COMPLIANCE_TESTS)/compliance_test.h
-	$(RISCV_EXE_PREFIX)gcc -c $(CFLAGS) -o $@ \
+	$(RISCV_EXE_PREFIX)gcc -c -mabi=ilp32 -march=rv32imc -g -o $@ \
 		-DTEST_FUNC_NAME=$(notdir $(subst -,_,$(basename $<))) \
 		-DTEST_FUNC_TXT='"$(notdir $(subst -,_,$(basename $<)))"' \
 		-DTEST_FUNC_RET=$(notdir $(subst -,_,$(basename $<)))_ret $<
