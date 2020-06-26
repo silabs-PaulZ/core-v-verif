@@ -200,7 +200,7 @@ sanity: hello-world
 # rules to generate hex (loadable by simulators) from elf
 .PRECIOUS : %.elf %.hex
 %.hex: %.elf
-	test -s $(dir $*) ||  echo ""; echo "ERROR: Test does not exist: $(dir $*)"; echo ""; exit 1;
+	test -s $(dir $*) || ( echo ""; echo "ERROR: Test does not exist: $(dir $*)"; echo ""; exit 1;)
 	$(RISCV_EXE_PREFIX)objcopy -O verilog $<  $@ --remove-section=.debugger
 	$(RISCV_EXE_PREFIX)objcopy -O verilog $<  $*_debugger.hex \
 		--only-section=.debugger           --change-section-address  .debugger=0xFFE000          \
@@ -229,15 +229,12 @@ TEST_FILES        = $(filter %.c %.S,$(wildcard $(dir $*)*))
 # Build image using TEST_FILES + BSP_FILES
 #$(PREREQ_TEST_FILES) $(PREREQ_BSP_FILES)
 %.elf: 
-	test -s $(dir $*) ||  echo ""; echo "ERROR: Test does not exist: $(dir $*)"; echo ""; exit 1;
+	test -d $(dir $*) ||  (echo ""; echo "ERROR: Test does not exist: $(dir $*)"; echo ""; exit 1;)
 	$(RISCV_EXE_PREFIX)gcc -mabi=ilp32 -march=rv32imc -o $@ \
 		-Wall -pedantic -Os -g -nostartfiles -static \
 		$(TEST_FILES) \
 		$(BSP_FILES) \
 		-T $(BSP)/link.ld
-
-
-
 
 
 ###############################################################################

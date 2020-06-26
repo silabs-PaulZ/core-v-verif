@@ -70,7 +70,7 @@ XRUN_COMP = 	$(XRUN_COMP_FLAGS) \
 #  - saves time
 #  - allows for easy reinovke compile in gui to test rtl change
 
-test ?= "_UNDEFINED_"
+test ?= "test=_UNDEFINED_"
 run:   mk_xrun_dir $(CORE_TEST_DIR)/$(test)/objectcode.hex $(CV32E40P_PKG) $(OVP_MODEL_DPI)
 	$(XRUN) $(XRUN_COMP) \
 	-l xrun-$(test).log $(XRUN_RUN_FLAGS) \
